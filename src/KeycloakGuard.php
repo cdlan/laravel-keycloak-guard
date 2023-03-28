@@ -36,16 +36,22 @@ class KeycloakGuard implements Guard
      */
     private function authenticate()
     {
-        try {
-            $this->decodedToken = Token::decode($this->getTokenForRequest(), $this->config['realm_public_key'], $this->config['leeway']);
-        } catch (\Exception $e) {
-            throw new TokenException($e->getMessage());
+        $decoded = NULL;
+        $realm_keys = json_decode($this->config['realm_public_key']);
+        if (count($realm_keys) > 0) {
+            foreach ($realm_keys as $realm_key) {
+                $decoded = Token::decode($this->getTokenForRequest(), $realm_key, $this->config['leeway']);
+                if ($decoded != NULL) {
+                    $this->decodedToken = $decoded;
+                    $this->validate([
+                        $this->config['user_provider_credential'] => $this->decodedToken->{$this->config['token_principal_attribute']}
+                    ]);
+                    break;
+                }
+            }
         }
-
-        if ($this->decodedToken) {
-            $this->validate([
-                $this->config['user_provider_credential'] => $this->decodedToken->{$this->config['token_principal_attribute']}
-            ]);
+        if ($decoded == NULL) {
+            throw new TokenException('reaml token not decoded');
         }
     }
 
@@ -62,10 +68,10 @@ class KeycloakGuard implements Guard
     }
 
     /**
-       * Determine if the current user is authenticated.
-       *
-       * @return bool
-       */
+     * Determine if the current user is authenticated.
+     *
+     * @return bool
+     */
     public function check()
     {
         return !is_null($this->user());
@@ -91,7 +97,7 @@ class KeycloakGuard implements Guard
         return !$this->check();
     }
 
-     /**
+    /**
      * Set the current user.
      *
      * @param  \Illuminate\Contracts\Auth\Authenticatable  $user
@@ -132,7 +138,7 @@ class KeycloakGuard implements Guard
         }
     }
 
-     /**
+    /**
      * Returns full decoded JWT token from athenticated user
      *
      * @return mixed|null
@@ -162,7 +168,7 @@ class KeycloakGuard implements Guard
             }
 
             if (!$user) {
-                throw new UserNotFoundException("User not found. Credentials: ".json_encode($credentials));
+                throw new UserNotFoundException("User not found. Credentials: " . json_encode($credentials));
             }
         } else {
             $class = $this->provider->getModel();
@@ -189,7 +195,7 @@ class KeycloakGuard implements Guard
         $allowed_resources = explode(',', $this->config['allowed_resources']);
 
         if (count(array_intersect($token_resource_access, $allowed_resources)) == 0) {
-            throw new ResourceAccessNotAllowedException("The decoded JWT token has not a valid `resource_access` allowed by API. Allowed resources by API: ".$this->config['allowed_resources']);
+            throw new ResourceAccessNotAllowedException("The decoded JWT token has not a valid `resource_access` allowed by API. Allowed resources by API: " . $this->config['allowed_resources']);
         }
     }
 
@@ -206,8 +212,10 @@ class KeycloakGuard implements Guard
         if (array_key_exists($resource, $token_resource_access)) {
             $token_resource_values = (array)$token_resource_access[$resource];
 
-            if (array_key_exists('roles', $token_resource_values) &&
-              in_array($role, $token_resource_values['roles'])) {
+            if (
+                array_key_exists('roles', $token_resource_values) &&
+                in_array($role, $token_resource_values['roles'])
+            ) {
                 return true;
             }
         }
