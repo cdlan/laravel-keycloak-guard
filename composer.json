@@ -1,11 +1,11 @@
 {
-    "name": "robsontenorio/laravel-keycloak-guard",
+    "name": "cdlan/laravel-keycloak-guard",
     "description": "🔑 Simple Keycloak Guard for Laravel",
     "keywords": [
         "laravel",
         "keycloak"
     ],
-    "homepage": "https://github.com/robsontenorio/laravel-keycloak-guard",
+    "homepage": "https://github.com/cdlan/laravel-keycloak-guard",
     "license": "MIT",
     "authors": [
         {
