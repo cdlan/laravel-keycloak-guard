@@ -37,7 +37,7 @@ class KeycloakGuard implements Guard
     private function authenticate()
     {
         $decoded = NULL;
-        $realm_keys = json_decode($this->config['realm_public_key']);
+        $realm_keys = json_decode($this->config['realm_public_key'], true);
         if (count($realm_keys) > 0) {
             foreach ($realm_keys as $realm_key) {
                 $decoded = Token::decode($this->getTokenForRequest(), $realm_key, $this->config['leeway']);
