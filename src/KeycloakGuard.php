@@ -2,13 +2,15 @@
 
 namespace KeycloakGuard;
 
-use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\Request;
+use Firebase\JWT\ExpiredException;
 use Illuminate\Contracts\Auth\Guard;
 use Illuminate\Contracts\Auth\UserProvider;
-use Illuminate\Http\Request;
-use KeycloakGuard\Exceptions\ResourceAccessNotAllowedException;
 use KeycloakGuard\Exceptions\TokenException;
+use Illuminate\Contracts\Auth\Authenticatable;
 use KeycloakGuard\Exceptions\UserNotFoundException;
+use KeycloakGuard\Exceptions\ResourceAccessNotAllowedException;
+use Exception;
 
 class KeycloakGuard implements Guard
 {
@@ -36,11 +38,22 @@ class KeycloakGuard implements Guard
      */
     private function authenticate()
     {
+
+        if (strlen($this->getTokenForRequest() == 0)) {
+            return response()->json('Empty Token sent', 401);
+        }
         $decoded = NULL;
         $realm_keys = json_decode($this->config['realm_public_key'], true);
         if (count($realm_keys) > 0) {
             foreach ($realm_keys as $realm_key) {
-                $decoded = Token::decode($this->getTokenForRequest(), $realm_key, $this->config['leeway']);
+                try {
+                    $decoded = Token::decode($this->getTokenForRequest(), $realm_key, $this->config['leeway']);
+                } catch (ExpiredException $e) {
+                    return response()->json('Token expired', 401);
+                } catch (Exception $e) {
+                    return response()->json(json_encode($e), 500);
+                }
+
                 if ($decoded != NULL) {
                     $this->decodedToken = $decoded;
                     $this->validate([
@@ -51,7 +64,7 @@ class KeycloakGuard implements Guard
             }
         }
         if ($decoded == NULL) {
-            throw new TokenException('reaml token not decoded');
+            return response()->json('reaml token not decoded', 401);
         }
     }
 
