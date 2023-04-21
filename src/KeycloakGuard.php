@@ -2,15 +2,18 @@
 
 namespace KeycloakGuard;
 
+use Exception;
 use Illuminate\Http\Request;
 use Firebase\JWT\ExpiredException;
 use Illuminate\Contracts\Auth\Guard;
 use Illuminate\Contracts\Auth\UserProvider;
 use KeycloakGuard\Exceptions\TokenException;
 use Illuminate\Contracts\Auth\Authenticatable;
+use KeycloakGuard\Exceptions\EmptyTokenException;
+use KeycloakGuard\Exceptions\ExpiredTokenException;
 use KeycloakGuard\Exceptions\UserNotFoundException;
+use KeycloakGuard\Exceptions\TokenNotDecodedException;
 use KeycloakGuard\Exceptions\ResourceAccessNotAllowedException;
-use Exception;
 
 class KeycloakGuard implements Guard
 {
@@ -40,7 +43,7 @@ class KeycloakGuard implements Guard
     {
 
         if (strlen($this->getTokenForRequest() == 0)) {
-            return response()->json('Empty Token sent', 401);
+            throw new EmptyTokenException('Empty Token sent', 401);
         }
         $decoded = NULL;
         $realm_keys = json_decode($this->config['realm_public_key'], true);
@@ -49,9 +52,9 @@ class KeycloakGuard implements Guard
                 try {
                     $decoded = Token::decode($this->getTokenForRequest(), $realm_key, $this->config['leeway']);
                 } catch (ExpiredException $e) {
-                    return response()->json('Token expired', 401);
+                    throw new ExpiredTokenException('Token expired', 401);
                 } catch (Exception $e) {
-                    return response()->json(json_encode($e), 500);
+                    throw new TokenException(json_encode($e), 500);
                 }
 
                 if ($decoded != NULL) {
@@ -64,7 +67,7 @@ class KeycloakGuard implements Guard
             }
         }
         if ($decoded == NULL) {
-            return response()->json('reaml token not decoded', 401);
+            throw new TokenNotDecodedException('Reaml token not decoded', 401);
         }
     }
 
@@ -181,7 +184,7 @@ class KeycloakGuard implements Guard
             }
 
             if (!$user) {
-                throw new UserNotFoundException("User not found. Credentials: " . json_encode($credentials));
+                throw new UserNotFoundException("User not found. Credentials: " . json_encode($credentials), 401);
             }
         } else {
             $class = $this->provider->getModel();
@@ -203,12 +206,13 @@ class KeycloakGuard implements Guard
         if ($this->config['ignore_resources_validation']) {
             return;
         }
+        if ($this->decodedToken != NULL) {
+            $token_resource_access = array_keys((array)($this->decodedToken->resource_access ?? []));
+            $allowed_resources = explode(',', $this->config['allowed_resources']);
 
-        $token_resource_access = array_keys((array)($this->decodedToken->resource_access ?? []));
-        $allowed_resources = explode(',', $this->config['allowed_resources']);
-
-        if (count(array_intersect($token_resource_access, $allowed_resources)) == 0) {
-            throw new ResourceAccessNotAllowedException("The decoded JWT token has not a valid `resource_access` allowed by API. Allowed resources by API: " . $this->config['allowed_resources']);
+            if (count(array_intersect($token_resource_access, $allowed_resources)) == 0) {
+                throw new ResourceAccessNotAllowedException("The decoded JWT token has not a valid `resource_access` allowed by API. Allowed resources by API: " . $this->config['allowed_resources'], 401);
+            }
         }
     }
 
@@ -220,18 +224,21 @@ class KeycloakGuard implements Guard
      */
     public function hasRole($resource, $role)
     {
-        $token_resource_access = (array)$this->decodedToken->resource_access;
+        if ($this->decodedToken != NULL) {
+            $token_resource_access = (array)$this->decodedToken->resource_access;
 
-        if (array_key_exists($resource, $token_resource_access)) {
-            $token_resource_values = (array)$token_resource_access[$resource];
+            if (array_key_exists($resource, $token_resource_access)) {
+                $token_resource_values = (array)$token_resource_access[$resource];
 
-            if (
-                array_key_exists('roles', $token_resource_values) &&
-                in_array($role, $token_resource_values['roles'])
-            ) {
-                return true;
+                if (
+                    array_key_exists('roles', $token_resource_values) &&
+                    in_array($role, $token_resource_values['roles'])
+                ) {
+                    return true;
+                }
             }
         }
+
 
         return false;
     }

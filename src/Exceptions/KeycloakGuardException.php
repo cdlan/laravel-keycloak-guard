@@ -4,8 +4,8 @@ namespace KeycloakGuard\Exceptions;
 
 class KeycloakGuardException extends \UnexpectedValueException
 {
-    public function __construct(string $message)
+    public function __construct(string $message, int $code)
     {
-        $this->message = "[Keycloak Guard] {$message}";
+        abort($code, 'KCGuard: ' . $message);
     }
 }
